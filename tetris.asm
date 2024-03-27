@@ -31,10 +31,16 @@ ADDR_DSPL:
     init_piece_y:
         .word 0
         
-    row_clean_x:
-        .word 1
-    row_clean_y:
+    row_length:
+        .word 19
+    column_length:
         .word 30
+    row_check_x:
+        .word 1
+    row_check_y:
+        .word 1
+    row_clean_end:
+        .word 1
 # The address of the keyboard. Don't forget to connect it!
 ADDR_KBRD:
     .word 0xffff0000
@@ -94,6 +100,13 @@ score:
 delay:
     .word 500
 
+row_clean_x:
+    .word 1
+row_clean_y:
+    .word 30
+row_clean_height:
+    .word 30
+
 ##############################################################################
 # Code
 ##############################################################################
@@ -123,7 +136,10 @@ jal generate_next_piece # randomly generate next piece
 
 init_piece:
 
-lw $t7, curr_piece
+jal check_row
+
+addi $t7, $zero, 0
+sw $t7 curr_piece_orient
 lw $a0, init_piece_x     # set x coordinate of the piece 
 lw $a1, init_piece_y     # set y coordinate of the piece 
 sw $a0, curr_piece_x
@@ -274,6 +290,71 @@ keyboard_input:                 # A key is pressed
 
     j input_processed
 
+check_row:
+    lw $t7, curr_piece
+    lw $a0, row_check_x
+    lw $a1, row_check_y
+    lw $t4, Color_Black
+    lw $a2, row_length
+    lw $a3, column_length
+
+    sll $t2, $a1, 9         # convert vertical offset to pixels (by multiplying $a1 by 256)
+    sll $t6, $a3, 9         # convert height of rectangle from lines to bytes (by multiplying $a3 by 256)
+    add $t6, $t2, $t6       # calculate value of $t2 for last line of the rectangle.
+    x_axis_top:
+
+        sll $t1, $a0, 3         # convert horizontal offset to pixels (by multiplying $a0 by 8)
+        sll $t5, $a2, 3         # convert length of line from pixels to bytes (by multiplying $a2 by 8)
+        add $t5, $t1, $t5       # calculate value of $t1 for end of the horizontal line.
+        y_axis_top:
+            add $t3, $t1, $t2           # store the total offset of the starting pixel (relative to $s0)
+            add $t3, $s0, $t3           # calculate the location of the starting pixel ($s0 + offset)
+            lw $t3, 0($t3)
+            beq $t4, $t3, y_axis_end              # paint the current unit on the first row yellow
+            addi $t1, $t1, 4            # move horizontal offset to the right by one pixel
+            beq $t1, $t5, move_row     # break out of the line-drawing loop
+            j y_axis_top                 # jump to the start of the inner loop
+        y_axis_end:
+
+        addi $t2, $t2, 256          # move vertical offset down by one line
+        beq $t2, $t6, x_axis_end     # break out of the outer drawing loop
+        j x_axis_top                 # jump to the top of the outer loop.
+    x_axis_end:                  # the end of 
+    
+    jr $ra                      # return to the calling program
+
+move_row:
+    srl $t2, $t2, 9
+    sw $t2 row_clean_y
+    lw $t7, curr_piece
+    lw $a0, row_clean_x
+    lw $a1, row_clean_y
+    lw $a2, row_length
+    lw $a3, row_clean_end
+    
+    sll $t2, $a1, 9         # convert vertical offset to pixels (by multiplying $a1 by 256)
+    sll $t6, $a3, 9      
+    x_top:
+
+        sll $t1, $a0, 3         # convert horizontal offset to pixels (by multiplying $a0 by 8)
+        sll $t5, $a2, 3         # convert length of line from pixels to bytes (by multiplying $a2 by 8)
+        add $t5, $t1, $t5       # calculate value of $t1 for end of the horizontal line.
+        y_top:
+            add $t3, $t1, $t2           # store the total offset of the starting pixel (relative to $s0)
+            add $t3, $s0, $t3           # calculate the location of the starting pixel ($s0 + offset)
+            lw $t4, Color_Black
+            sw $t4, 0($t3)
+            addi $t1, $t1, 4            # move horizontal offset to the right by one pixel
+            beq $t1, $t5, y_end     # break out of the line-drawing loop
+            j y_top                 # jump to the start of the inner loop
+        y_end:
+
+        addi $t2, $t2, -256          # move vertical offset down by one line
+        beq $t2, $t6, x_end     # break out of the outer drawing loop
+        j x_top                 # jump to the top of the outer loop.
+    x_end:                  # the end of 
+    
+    j init_piece
 
 rotate:
     li $v0, 31
