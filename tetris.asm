@@ -6,8 +6,8 @@
 ######################## Bitmap Display Configuration ########################
 # - Unit width in pixels:       2
 # - Unit height in pixels:      2
-# - Display width in pixels:    256
-# - Display height in pixels:   256
+# - Display width in pixels:    128
+# - Display height in pixels:   128
 # - Base Address for Display:   0x10008000 ($gp)
 ##############################################################################
 
@@ -20,14 +20,21 @@ ADDR_DSPL:
     .word 0x10008000
     wall_width:         
         .word 1 
-    piece_width:
+    piece_len2:
         .word 2
     piece_len1:
         .word 1
+    piece_len4:
+        .word 4
     init_piece_x:
         .word 10
     init_piece_y:
+        .word 0
+        
+    row_clean_x:
         .word 1
+    row_clean_y:
+        .word 30
 # The address of the keyboard. Don't forget to connect it!
 ADDR_KBRD:
     .word 0xffff0000
@@ -41,6 +48,9 @@ ADDR_KBRD:
         .word 0x64
     Key_Q: # To quit the game
         .word 0x71
+# Grid
+grid_data:
+  .byte 0x00:200
 
 # Colors
 Color_Brick:
@@ -55,6 +65,15 @@ Color_Black:
     .word 0x000000
 Color_White:
     .word 0xffffff
+# sound    
+beep: 
+    .word 72
+duration: 
+    .word 100
+instrument:
+    .word 1
+volume:
+    .word 50
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -69,18 +88,17 @@ curr_piece_orient:
 next_piece:
     .word 0
     
-row_clean_y:
-    .word 0
 score:
     .word 0    
 
-background_grid_copy:    
-    .space  16384
+delay:
+    .word 500
 
 ##############################################################################
 # Code
 ##############################################################################
 	.text
+  
 	.globl main
 
 	# Run the Tetris game.
@@ -111,8 +129,15 @@ lw $a1, init_piece_y     # set y coordinate of the piece
 sw $a0, curr_piece_x
 sw $a1, curr_piece_y
 lw $t4, Color_Red
-lw $a2, piece_width     # fetch the width of the vertical walls    
+lw $a2, piece_len4    # fetch the width of the vertical walls    
+lw $a3, piece_len1
 
+lw $t1, delay
+blt $t1, 50, init_end
+subi $t1, $t1, 5
+sw $t1 delay
+
+init_end:
 jal draw_piece
 
 
@@ -130,12 +155,16 @@ game_loop:
     input_processed:
     
     jal move_down
+    
+    # jal check_rows
 
     # sleep for 0.5s
-    li $v0 , 32
-    li $a0 , 500
+    li $v0, 32
+    lw $t1, delay
+    move $a0, $t1
     syscall
 
+    loop_back:
     # loop back to game_loop
     j game_loop
 
@@ -225,8 +254,7 @@ draw_rect:
         j outer_top                 # jump to the top of the outer loop.
     outer_end:                  # the end of the outer rectangle drawing loop.
 
-    jr $ra                      # return to the calling program.
-
+    jr $ra                      # return to the calling program
 
 
 keyboard_input:                 # A key is pressed
@@ -246,138 +274,302 @@ keyboard_input:                 # A key is pressed
 
     j input_processed
 
+
 rotate:
+    li $v0, 31
+    lw $a0, beep
+    lw $a1, duration
+    lw $a2, instrument
+    lw $a3, volume
+
+    syscall
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t7, curr_piece_orient
+    beq $t7, 1, rotate_v_to_h
+    beq $t7, 0, rotate_h_to_v
+    
+    rotate_v_to_h:
     lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
-    lw $a2, piece_width 
+    lw $a2, piece_len1
+    lw $a3, piece_len4
     
-    addi $t1, $a0, -1
+    addi $t1, $a0, 0
     sll $t1, $t1, 3 
-    lw $t2, curr_piece_y
+    addi $t2, $a1, 0
     sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, input_processed
     
-    addi $t1, $a1, 1
-    sll $t1, $t1, 9 
-    lw $t2, curr_piece_x
-    sll $t2, $t2, 3
+    addi $t1, $a0, 1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 0
+    sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, input_processed
     
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 0
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    jal draw_piece
+    
+    addi $t7, $zero, 0
+    sw $t7 curr_piece_orient
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
+    lw $a2, piece_len4
+    lw $a3, piece_len1
+    lw $t4, Color_Red
+     
+    jal draw_piece
+    
+    j rotate_end
+    
+    rotate_h_to_v:
+    lw $t7, curr_piece
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    lw $t4, Color_Black
+    lw $a2, piece_len4
+    lw $a3, piece_len1
+    
+    addi $t1, $a0, -1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    addi $t1, $a0, -1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -2
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    addi $t1, $a0, -1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    addi $t1, $a0, -1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
     
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
     jal draw_piece
     
-    lw $t4, Color_Red
+    addi $t7, $zero, 1
+    sw $t7 curr_piece_orient
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
+    lw $a2, piece_len1
+    lw $a3, piece_len4
+    lw $t4, Color_Red
     
-    addi $a1, $a1 1
-    sw $a1, curr_piece_y
-    jal rotate_clockwise
+    jal draw_piece
     
+    j rotate_end
+    
+    rotate_end:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
     
+    
 drop:
+    li $v0, 31
+    lw $a0, beep
+    lw $a1, duration
+    lw $a2, instrument
+    lw $a3, volume
+
+    syscall
+    
     jal move_down
     j drop
-    
-move_down:
 
+move_down:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    lw $t7 curr_piece_orient
+    beq $t7, 1, move_down_v
+    beq $t7, 0, move_down_h
+    
+    move_down_v:
     lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
-    lw $a2, piece_width 
+    lw $a2, piece_len1
+    lw $a3, piece_len4
     
     addi $t1, $a0, -1
     sll $t1, $t1, 3 
-    lw $t2, curr_piece_y
+    addi $t2, $a1, 2
     sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
     bne $t2, $t4, init_piece
     
-    addi $t1, $a1, 1
-    sll $t1, $t1, 9 
-    addi $t2, $a0, 0
-    sll $t2, $t2, 3
-    add $t3, $t1, $t2
-    add $t3, $s0, $t3
-    lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
-    
-    addi $t1, $a1, 1
-    sll $t1, $t1, 9 
-    addi $t2, $a0, 1
-    sll $t2, $t2, 3
-    add $t3, $t1, $t2
-    add $t3, $s0, $t3
-    lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
-    
-    lw $a0, curr_piece_x
-    lw $a1, curr_piece_y
-    
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    
     jal draw_piece
     
     lw $t4, Color_Red
+    
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
-    
     addi $a1, $a1 1
     sw $a1, curr_piece_y
     jal draw_piece
     
+    j down_end
+
+    move_down_h:
+    lw $t7, curr_piece
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    lw $t4, Color_Black
+    lw $a2, piece_len4
+    lw $a3, piece_len1
+    
+    addi $t1, $a0, -1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, init_piece
+    
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, init_piece
+    
+    addi $t1, $a0, 0
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, init_piece
+    
+    addi $t1, $a0, 1
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, init_piece
+    
+    jal draw_piece
+    
+    lw $t4, Color_Red
+    
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    addi $a1, $a1 1
+    sw $a1, curr_piece_y
+    jal draw_piece
+    
+    j down_end
+    
+    down_end:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
 move_left:
+
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t7 curr_piece_orient
+    beq $t7, 1, move_left_v
+    beq $t7, 0, move_left_h
+    
+    move_left_v:
     lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
-    lw $a2, piece_width 
+    lw $a2, piece_len1 
+    lw $a3, piece_len4
     
-    addi $t1, $a1, -1
-    sll $t1, $t1, 9 
-    addi $t2, $a0, -2
-    sll $t2, $t2, 3
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -2
+    sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
     bne $t2, $t4, input_processed
     
-    addi $t1, $a1, 0
-    sll $t1, $t1, 9 
-    addi $t2, $a0, -1
-    sll $t2, $t2, 3
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -1
+    sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
     bne $t2, $t4, input_processed
     
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 0
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
     
+    addi $t1, $a0, -2
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+
     jal draw_piece
     
     lw $t4, Color_Red
@@ -388,38 +580,94 @@ move_left:
     sw $a0, curr_piece_x
     jal draw_piece
     
+    j left_end
+    
+    move_left_h:
+    lw $t7, curr_piece
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    lw $t4, Color_Black
+    lw $a2, piece_len4 
+    lw $a3, piece_len1
+    
+    addi $t1, $a1, 0
+    sll $t1, $t1, 9 
+    addi $t2, $a0, -3
+    sll $t2, $t2, 3
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+
+    jal draw_piece
+    
+    lw $t4, Color_Red
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    
+    addi $a0, $a0 -1
+    sw $a0, curr_piece_x
+    jal draw_piece
+    
+    j left_end
+    
+    left_end:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
 move_right:
 
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    lw $t7 curr_piece_orient
+    beq $t7, 1, move_right_v
+    beq $t7, 0, move_right_h
+
+    move_right_v:
     lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
-    lw $a2, piece_width 
+    lw $a2, piece_len1
+    lw $a3, piece_len4
     
-    addi $t1, $a1, 0
-    sll $t1, $t1, 9 
-    addi $t2, $a0, 2
-    sll $t2, $t2, 3
+    addi $t1, $a0, 0
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -2
+    sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
     bne $t2, $t4, input_processed
     
-    addi $t1, $a1, -1
-    sll $t1, $t1, 9 
-    addi $t2, $a0, 1
-    sll $t2, $t2, 3
+    addi $t1, $a0, 0
+    sll $t1, $t1, 3 
+    addi $t2, $a1, -1
+    sll $t2, $t2, 9
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
     bne $t2, $t4, input_processed
     
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
+    addi $t1, $a0, 0
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 0
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    addi $t1, $a0, 0
+    sll $t1, $t1, 3 
+    addi $t2, $a1, 1
+    sll $t2, $t2, 9
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
     
     jal draw_piece
     
@@ -431,6 +679,38 @@ move_right:
     sw $a0, curr_piece_x
     jal draw_piece
     
+    j right_end
+    
+    move_right_h:
+    lw $t7, curr_piece
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    lw $t4, Color_Black
+    lw $a2, piece_len4
+    lw $a3, piece_len1
+    
+    addi $t1, $a1, 0
+    sll $t1, $t1, 9 
+    addi $t2, $a0, 2
+    sll $t2, $t2, 3
+    add $t3, $t1, $t2
+    add $t3, $s0, $t3
+    lw $t2, 0($t3) 
+    bne $t2, $t4, input_processed
+    
+    jal draw_piece
+    
+    lw $t4, Color_Red
+    lw $a0, curr_piece_x
+    lw $a1, curr_piece_y
+    
+    addi $a0, $a0 1
+    sw $a0, curr_piece_x
+    jal draw_piece
+    
+    j right_end
+    
+    right_end:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -452,41 +732,27 @@ draw_piece: # print curr piece on the display
 # a2: width of the piece
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-
-    lw $a3, piece_len1
-    jal draw_rect
     
-    subi $a0 $a0 1     # set x coordinate of the piece 
-    subi $a1 $a1 1    # set y coordinate of the piece
-    lw $a2, piece_width     # fetch the width of the vertical walls 
-    lw $a3, piece_len1
+    lw $t7 curr_piece_orient
+    beq $t7, 1, draw_v
+    beq $t7, 0, draw_h
+    
+    draw_v:
+        addi $a0, $a0, -1
+        addi $a1, $a1, -2
+        j draw    
+    
+    draw_h:
+        addi $a0, $a0, -2
+        j draw
+
+    draw:
     jal draw_rect
     
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-
-rotate_clockwise: # rotate the piece and print
-# t4: color
-# t7: curr_piece
-# a0: init_piece_x
-# a1: init_piece_y
-# a2: width of the piece
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-
-    lw $a3, piece_len1
-    jal draw_rect
-    
-    subi $a0 $a0 1     # set x coordinate of the piece 
-    subi $a1 $a1 1    # set y coordinate of the piece
-    lw $a2, piece_width     # fetch the width of the vertical walls 
-    lw $a3, piece_len1
-    jal draw_rect
-    
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    jr $ra    
+   
 
 exit:
     li $v0, 10              # terminate the program gracefully
