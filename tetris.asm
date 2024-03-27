@@ -324,15 +324,15 @@ check_row:
     jr $ra                      # return to the calling program
 
 move_row:
-    srl $t2, $t2, 9
+
+    addi $t2, $t2, 256
     sw $t2 row_clean_y
     lw $t7, curr_piece
     lw $a0, row_clean_x
     lw $a1, row_clean_y
     lw $a2, row_length
     lw $a3, row_clean_end
-    
-    sll $t2, $a1, 9         # convert vertical offset to pixels (by multiplying $a1 by 256)
+
     sll $t6, $a3, 9      
     x_top:
 
@@ -342,14 +342,14 @@ move_row:
         y_top:
             add $t3, $t1, $t2           # store the total offset of the starting pixel (relative to $s0)
             add $t3, $s0, $t3           # calculate the location of the starting pixel ($s0 + offset)
-            lw $t4, Color_Black
+            lw $t4, -512($t3)
             sw $t4, 0($t3)
             addi $t1, $t1, 4            # move horizontal offset to the right by one pixel
             beq $t1, $t5, y_end     # break out of the line-drawing loop
             j y_top                 # jump to the start of the inner loop
         y_end:
 
-        addi $t2, $t2, -256          # move vertical offset down by one line
+        addi $t2, $t2, -256         # move vertical offset down by one line
         beq $t2, $t6, x_end     # break out of the outer drawing loop
         j x_top                 # jump to the top of the outer loop.
     x_end:                  # the end of 
