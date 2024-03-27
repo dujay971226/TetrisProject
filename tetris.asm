@@ -148,6 +148,43 @@ lw $t4, Color_Red
 lw $a2, piece_len4    # fetch the width of the vertical walls    
 lw $a3, piece_len1
 
+# Checks for whether the init place is occupied, if so, quit.
+addi $t1, $a0, -2
+sll $t1, $t1, 3 
+lw $t2, init_piece_y
+sll $t2, $t2, 9
+add $t3, $t1, $t2
+add $t3, $s0, $t3
+lw $t2, 0($t3) 
+beq $t2, $t4, exit
+
+addi $t1, $a0, -1
+sll $t1, $t1, 3 
+lw $t2, init_piece_y
+sll $t2, $t2, 9
+add $t3, $t1, $t2
+add $t3, $s0, $t3
+lw $t2, 0($t3) 
+beq $t2, $t4, exit
+
+addi $t1, $a0, 0
+sll $t1, $t1, 3 
+lw $t2, init_piece_y
+sll $t2, $t2, 9
+add $t3, $t1, $t2
+add $t3, $s0, $t3
+lw $t2, 0($t3) 
+beq $t2, $t4, exit
+
+addi $t1, $a0, 1
+sll $t1, $t1, 3 
+lw $t2, init_piece_y
+sll $t2, $t2, 9
+add $t3, $t1, $t2
+add $t3, $s0, $t3
+lw $t2, 0($t3) 
+beq $t2, $t4, exit
+
 lw $t1, delay
 blt $t1, 50, init_end
 subi $t1, $t1, 5
@@ -357,13 +394,6 @@ move_row:
     j init_piece
 
 rotate:
-    li $v0, 31
-    lw $a0, beep
-    lw $a1, duration
-    lw $a2, instrument
-    lw $a3, volume
-
-    syscall
     
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -483,6 +513,15 @@ rotate:
     j rotate_end
     
     rotate_end:
+    
+    li $v0, 31
+    lw $a0, beep
+    lw $a1, duration
+    lw $a2, instrument
+    lw $a3, volume
+
+    syscall
+    
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
@@ -836,5 +875,14 @@ draw_piece: # print curr piece on the display
    
 
 exit:
+    li $v0, 31
+    lw $a0, beep
+    lw $a1, duration
+    lw $a2, instrument
+    lw $a3, volume
+
+    syscall
+
+
     li $v0, 10              # terminate the program gracefully
     syscall
