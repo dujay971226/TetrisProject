@@ -54,6 +54,8 @@ ADDR_KBRD:
         .word 0x64
     Key_Q: # To quit the game
         .word 0x71
+    Key_P: # To pause the game
+        .word 0x70
 # Grid
 grid_data:
   .byte 0x00:200
@@ -79,7 +81,7 @@ duration:
 instrument:
     .word 1
 volume:
-    .word 50
+    .word 100
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -322,10 +324,24 @@ keyboard_input:                 # A key is pressed
     beq $a0, $a1, drop          # Check if the key S was pressed. If so, drop the piece.
     lw $a1, Key_D               # Load Key D
     beq $a0, $a1, move_right    # Check if the key D was pressed. If so, move the piece right by 1.
-    
-    key_checked:
+    lw $a1, Key_P               # Load Key D
+    beq $a0, $a1, pause   # Check if the key D was pressed. If so, move the piece right by 1.
 
     j input_processed
+
+
+
+pause:
+
+    lw $t0, ADDR_KBRD               
+    lw $t8, 0($t0)                  
+    bne $t8, 1, pause
+    
+    lw $a0, 4($t0) 
+    lw $a1, Key_P  
+    beq $a0, $a1, input_processed
+    
+    j pause
 
 check_row:
     lw $t7, curr_piece
