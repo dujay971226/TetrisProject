@@ -18,6 +18,14 @@
 # The address of the bitmap display. Don't forget to connect it!
 ADDR_DSPL:
     .word 0x10008000
+    corner_x:
+        .word 0
+    corner_y:
+        .word 0
+    board_width:
+        .word 32
+    board_height:
+        .word 32
     wall_width:         
         .word 1 
     piece_len2:
@@ -30,6 +38,9 @@ ADDR_DSPL:
         .word 10
     init_piece_y:
         .word 0
+        
+    decimal:
+        .word 10
         
     row_length:
         .word 19
@@ -56,6 +67,8 @@ ADDR_KBRD:
         .word 0x71
     Key_P: # To pause the game
         .word 0x70
+    Key_R: # To Retry after game over
+        .word 0x72
 # Grid
 grid_data:
   .byte 0x00:200
@@ -75,13 +88,20 @@ Color_White:
     .word 0xffffff
 # sound    
 beep: 
-    .word 72
+    .word 60
 duration: 
     .word 100
+duration_long:
+    .word 1000
 instrument:
-    .word 1
+    .word 57
+instrument_win:
+    .word 126
+instrument_lose:
+    .word 127
 volume:
     .word 100
+
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -89,8 +109,6 @@ curr_piece_x:
     .word 8               # x coordinate for current piece
 curr_piece_y:
     .word 0               # y coordinate for current piece
-curr_piece:
-    .word 0
 curr_piece_orient:
     .word 0
 next_piece:
@@ -122,23 +140,29 @@ main:
 
 lw $s0, ADDR_DSPL  # $s0 = base address for display
 
+lw $a0, corner_x
+lw $a1, corner_y
+lw $t4, Color_Black
+lw $a2, board_width
+lw $a3, board_height
+    
+jal draw_rect
+
 j draw_border
 
 border_initiated:
 
-# randomly generate current piece
-li $v0, 42
-li $a0, 0
-li $a1, 8
-syscall
-la $t9, curr_piece     
-sw $a0, 0($t9)
+jal random_start
 
-jal generate_next_piece # randomly generate next piece
+random_start_initiated:
 
-init_piece:
+j check_row
 
-jal check_row
+row_checked:
+
+j draw_score
+
+score_drawn:
 
 addi $t7, $zero, 0
 sw $t7 curr_piece_orient
@@ -158,7 +182,7 @@ sll $t2, $t2, 9
 add $t3, $t1, $t2
 add $t3, $s0, $t3
 lw $t2, 0($t3) 
-beq $t2, $t4, exit
+beq $t2, $t4, game_over
 
 addi $t1, $a0, -1
 sll $t1, $t1, 3 
@@ -167,7 +191,7 @@ sll $t2, $t2, 9
 add $t3, $t1, $t2
 add $t3, $s0, $t3
 lw $t2, 0($t3) 
-beq $t2, $t4, exit
+beq $t2, $t4, game_over
 
 addi $t1, $a0, 0
 sll $t1, $t1, 3 
@@ -176,7 +200,7 @@ sll $t2, $t2, 9
 add $t3, $t1, $t2
 add $t3, $s0, $t3
 lw $t2, 0($t3) 
-beq $t2, $t4, exit
+beq $t2, $t4, game_over
 
 addi $t1, $a0, 1
 sll $t1, $t1, 3 
@@ -185,7 +209,7 @@ sll $t2, $t2, 9
 add $t3, $t1, $t2
 add $t3, $s0, $t3
 lw $t2, 0($t3) 
-beq $t2, $t4, exit
+beq $t2, $t4, game_over
 
 lw $t1, delay
 blt $t1, 50, init_end
@@ -238,39 +262,260 @@ draw_border:
     addi $a3, $zero, 32      # set height of rectangle
     jal draw_rect
     
-    lw $t4 Color_Green
-    
-    addi $a0, $zero, 22      # set x coordinate of rectangle 
-    addi $a1, $zero, 10      # set y coordinate of rectangle 
-    addi $a3, $zero, 7      # set height of rectangle
-    jal draw_rect
-    
-    addi $a0, $zero, 30      # set x coordinate of rectangle 
-    addi $a1, $zero, 10      # set y coordinate of rectangle 
-    addi $a3, $zero, 7      # set height of rectangle
-    jal draw_rect
-
-    lw $t4 Color_Brick
-    
     lw $a3, wall_width      # set the width of the floor
     addi $a0, $zero, 1      # set x coordinate of rectangle 
     addi $a1, $zero, 31      # set y coordinate of rectangle 
     addi $a2, $zero, 19      # set width of rectangle
     jal draw_rect
     
-    lw $t4 Color_Green
+    lw $t4 Color_Green   
     
-    addi $a0, $zero, 23      # set x coordinate of rectangle 
-    addi $a1, $zero, 10      # set y coordinate of rectangle 
-    addi $a2, $zero, 7      # set width of rectangle
-    jal draw_rect
+    # Letter S
+    addi $a0, $zero, 44      # set x coordinate of rectangle 
+    addi $a1, $zero, 16      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
     
-    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a0, $zero, 44      # set x coordinate of rectangle 
+    addi $a1, $zero, 18      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 43      # set x coordinate of rectangle 
+    addi $a1, $zero, 20      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 43      # set x coordinate of rectangle 
     addi $a1, $zero, 17      # set y coordinate of rectangle 
-    addi $a2, $zero, 9      # set width of rectangle
-    jal draw_rect
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 45      # set x coordinate of rectangle 
+    addi $a1, $zero, 19      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    # Letter C
+    addi $a0, $zero, 48      # set x coordinate of rectangle 
+    addi $a1, $zero, 16      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 48      # set x coordinate of rectangle 
+    addi $a1, $zero, 20      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 47      # set x coordinate of rectangle 
+    addi $a1, $zero, 17     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+    
+    # Letter O
+    addi $a0, $zero, 52      # set x coordinate of rectangle 
+    addi $a1, $zero, 16      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 52      # set x coordinate of rectangle 
+    addi $a1, $zero, 20      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 51      # set x coordinate of rectangle 
+    addi $a1, $zero, 17     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 53      # set x coordinate of rectangle 
+    addi $a1, $zero, 17     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+    
+    # Letter R
+    addi $a0, $zero, 55      # set x coordinate of rectangle 
+    addi $a1, $zero, 16      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 55      # set x coordinate of rectangle 
+    addi $a1, $zero, 18      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 55      # set x coordinate of rectangle 
+    addi $a1, $zero, 16     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 57      # set x coordinate of rectangle 
+    addi $a1, $zero, 17     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 57      # set x coordinate of rectangle 
+    addi $a1, $zero, 19     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_line
+    
+    # Letter E
+    addi $a0, $zero, 59      # set x coordinate of rectangle 
+    addi $a1, $zero, 16      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 59      # set x coordinate of rectangle 
+    addi $a1, $zero, 18      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 59      # set x coordinate of rectangle 
+    addi $a1, $zero, 20      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 59      # set x coordinate of rectangle 
+    addi $a1, $zero, 16     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
     
     j border_initiated
+    
+random_start:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    lw $t4 Color_Red
+         
+    addi $a0, $zero, 1      # set x coordinate of rectangle 
+    addi $a1, $zero, 26      # set y coordinate of rectangle 
+    addi $a2, $zero, 19 
+    addi $a3, $zero, 5      # set height of rectangle
+    jal draw_rect
+    
+    lw $t4 Color_Black
+
+    li $v0, 42
+    li $a0, 0
+    li $a1, 18
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 26      # set y coordinate of rectangle 
+    addi $a2, $zero, 1
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 14
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 26      # set y coordinate of rectangle 
+    addi $a2, $zero, 5
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 16
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 27      # set y coordinate of rectangle 
+    addi $a2, $zero, 3
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 15
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 28      # set y coordinate of rectangle 
+    addi $a2, $zero, 4
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 17
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 29      # set y coordinate of rectangle 
+    addi $a2, $zero, 2
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 14
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 29      # set y coordinate of rectangle 
+    addi $a2, $zero, 5
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    li $v0, 42
+    li $a0, 0
+    li $a1, 15
+    syscall
+    addi $a0, $a0, 1
+    addi $a1, $zero, 30      # set y coordinate of rectangle 
+    addi $a2, $zero, 4
+    addi $a3, $zero, 1      # set height of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_line:
+
+    sll $t2, $a1, 8         # convert vertical offset to pixels (by multiplying $a1 by 256)
+    sll $t6, $a3, 8         # convert height of rectangle from lines to bytes (by multiplying $a3 by 256)
+    add $t6, $t2, $t6       # calculate value of $t2 for last line of the rectangle.
+    outr_top:
+
+        sll $t1, $a0, 2         # convert horizontal offset to pixels (by multiplying $a0 by 8)
+        sll $t5, $a2, 2         # convert length of line from pixels to bytes (by multiplying $a2 by 8)
+        add $t5, $t1, $t5       # calculate value of $t1 for end of the horizontal line.
+        innr_top:
+            add $t3, $t1, $t2           # store the total offset of the starting pixel (relative to $s0)
+            add $t3, $s0, $t3           # calculate the location of the starting pixel ($s0 + offset)
+            sw $t4, 0($t3)              # paint the current unit on the first row yellow
+            addi $t1, $t1, 4            # move horizontal offset to the right by one pixel
+            beq $t1, $t5, innr_end     # break out of the line-drawing loop
+            j innr_top                 # jump to the start of the inner loop
+        innr_end:
+
+        addi $t2, $t2, 256          # move vertical offset down by one line
+        beq $t2, $t6, outr_end     # break out of the outer drawing loop
+        j outr_top                 # jump to the top of the outer loop.
+    outr_end:                  # the end of the outer rectangle drawing loop.
+
+    jr $ra                      # return to the calling program
 
 
 draw_rect:
@@ -344,7 +589,6 @@ pause:
     j pause
 
 check_row:
-    lw $t7, curr_piece
     lw $a0, row_check_x
     lw $a1, row_check_y
     lw $t4, Color_Black
@@ -374,13 +618,27 @@ check_row:
         j x_axis_top                 # jump to the top of the outer loop.
     x_axis_end:                  # the end of 
     
-    jr $ra                      # return to the calling program
+    j row_checked                      # return to the calling program
 
 move_row:
+    
+    li $v0, 31
+    lw $a0, beep
+    lw $a1, duration_long
+    lw $a2, instrument_win
+    lw $a3, volume
 
+    syscall
+
+    lw $t1, score
+    addi $t1, $t1, 1
+    bge $t1, 100, reset_score
+    
+    resetted:
+    sw $t1, score
+    
     addi $t2, $t2, 256
     sw $t2 row_clean_y
-    lw $t7, curr_piece
     lw $a0, row_clean_x
     lw $a1, row_clean_y
     lw $a2, row_length
@@ -407,7 +665,466 @@ move_row:
         j x_top                 # jump to the top of the outer loop.
     x_end:                  # the end of 
     
-    j init_piece
+    j random_start_initiated
+
+reset_score:
+    add $t1, $zero, $zero
+    j resetted
+
+draw_score:
+    lw $t4 Color_Black
+
+    addi $a0, $a0, 21
+    addi $a1, $zero, 13      # set y coordinate of rectangle 
+    addi $a2, $zero, 9
+    addi $a3, $zero, 7      # set height of rectangle
+    jal draw_rect
+
+    lw $t4 Color_Green
+
+    lw $t1, score
+    lw $t2, decimal
+    divu $t1, $t2
+    mflo $t1
+    jal draw_d1
+    
+    lw $t1, score
+    lw $t2, decimal
+    divu $t1, $t2
+    mfhi $t1
+    jal draw_d2
+    
+    j score_drawn
+
+draw_d1:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    addi $t7, $zero, 21
+    addi $t8, $zero, 13
+    
+    beq $t1, 0, draw_0 
+    beq $t1, 1, draw_1
+    beq $t1, 2, draw_2
+    beq $t1, 3, draw_3
+    beq $t1, 4, draw_4
+    beq $t1, 5, draw_5
+    beq $t1, 6, draw_6
+    beq $t1, 7, draw_7
+    beq $t1, 8, draw_8
+    beq $t1, 9, draw_9
+    
+draw_d2:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    addi $t7, $zero, 26
+    addi $t8, $zero, 13
+    
+    beq $t1, 0, draw_0 
+    beq $t1, 1, draw_1
+    beq $t1, 2, draw_2
+    beq $t1, 3, draw_3
+    beq $t1, 4, draw_4
+    beq $t1, 5, draw_5
+    beq $t1, 6, draw_6
+    beq $t1, 7, draw_7
+    beq $t1, 8, draw_8
+    beq $t1, 9, draw_9
+
+draw_0:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    #seg 4
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+draw_1:
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_2:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    #seg 4
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+draw_3:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_4:
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+    
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_5:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+draw_6:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    #seg 4
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+draw_7:
+    # seg 0
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3      # set height of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_8:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    #seg 4
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+draw_9:
+    # seg 0
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 0      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    # seg 1
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 2
+    addi $a0, $t7, 4      # set x coordinate of rectangle 
+    addi $a1, $t8, 4      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+    
+    # seg 3
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+
+    # seg 5
+    addi $a0, $t7, 1      # set x coordinate of rectangle 
+    addi $a1, $t8, 1      # set y coordinate of rectangle
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2      # set height of rectangle
+    jal draw_rect
+   
+    # seg 6
+    addi $a0, $t7, 2      # set x coordinate of rectangle 
+    addi $a1, $t8, 3      # set y coordinate of rectangle 
+    addi $a2, $zero, 2      # set height of rectangle
+    addi $a3, $zero, 1      # set width of rectangle
+    jal draw_rect
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
 
 rotate:
     
@@ -419,7 +1136,6 @@ rotate:
     beq $t7, 0, rotate_h_to_v
     
     rotate_v_to_h:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -468,7 +1184,6 @@ rotate:
     j rotate_end
     
     rotate_h_to_v:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -564,7 +1279,6 @@ move_down:
     beq $t7, 0, move_down_h
     
     move_down_v:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -578,7 +1292,7 @@ move_down:
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, random_start_initiated
     
     jal draw_piece
     
@@ -593,7 +1307,6 @@ move_down:
     j down_end
 
     move_down_h:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -607,7 +1320,7 @@ move_down:
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, random_start_initiated
     
     addi $t1, $a0, -2
     sll $t1, $t1, 3 
@@ -616,7 +1329,7 @@ move_down:
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, random_start_initiated
     
     addi $t1, $a0, 0
     sll $t1, $t1, 3 
@@ -625,7 +1338,7 @@ move_down:
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, random_start_initiated
     
     addi $t1, $a0, 1
     sll $t1, $t1, 3 
@@ -634,7 +1347,7 @@ move_down:
     add $t3, $t1, $t2
     add $t3, $s0, $t3
     lw $t2, 0($t3) 
-    bne $t2, $t4, init_piece
+    bne $t2, $t4, random_start_initiated
     
     jal draw_piece
     
@@ -663,7 +1376,6 @@ move_left:
     beq $t7, 0, move_left_h
     
     move_left_v:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -719,7 +1431,6 @@ move_left:
     j left_end
     
     move_left_h:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -762,7 +1473,6 @@ move_right:
     beq $t7, 0, move_right_h
 
     move_right_v:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -818,7 +1528,6 @@ move_right:
     j right_end
     
     move_right_h:
-    lw $t7, curr_piece
     lw $a0, curr_piece_x
     lw $a1, curr_piece_y
     lw $t4, Color_Black
@@ -851,14 +1560,6 @@ move_right:
     addi $sp, $sp, 4
     jr $ra
 
-generate_next_piece: # randomly generate next piece
-    li $v0, 42
-    li $a0, 0
-    li $a1, 8
-    syscall
-    la $t9, next_piece     
-    sw $a0, 0($t9)
-    jr $ra 
 
 draw_piece: # print curr piece on the display
 # t4: color
@@ -888,17 +1589,624 @@ draw_piece: # print curr piece on the display
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-   
 
-exit:
+game_over:
+
     li $v0, 31
     lw $a0, beep
-    lw $a1, duration
-    lw $a2, instrument
+    lw $a1, duration_long
+    lw $a2, instrument_lose
     lw $a3, volume
 
     syscall
 
+    lw $t4, Color_Black
+    lw $a0, corner_x
+    lw $a1, corner_y
+    lw $a2, board_width
+    lw $a3, board_height
+    
+    jal draw_rect
+    
+    lw $t4 Color_White
 
+    # Letter G
+    addi $a0, $zero, 4      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 4      # set x coordinate of rectangle 
+    addi $a1, $zero, 5      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 4     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 4      # set x coordinate of rectangle 
+    addi $a1, $zero, 8      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 6      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 8      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+    # Letter A
+    addi $a0, $zero, 12      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 11      # set x coordinate of rectangle 
+    addi $a1, $zero, 5      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 13      # set x coordinate of rectangle 
+    addi $a1, $zero, 5      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 10      # set x coordinate of rectangle 
+    addi $a1, $zero, 7      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 10      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 14      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+    # Letter M
+    addi $a0, $zero, 16      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 18      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 20      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 17      # set x coordinate of rectangle 
+    addi $a1, $zero, 5      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 19      # set x coordinate of rectangle 
+    addi $a1, $zero, 5      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+# Letter E
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 6      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 8      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 4      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_rect
+    
+# Letter O
+    addi $a0, $zero, 5      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 5      # set x coordinate of rectangle 
+    addi $a1, $zero, 15      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 4      # set x coordinate of rectangle 
+    addi $a1, $zero, 12      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 8      # set x coordinate of rectangle 
+    addi $a1, $zero, 12      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+# Letter V
+    addi $a0, $zero, 10      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 11      # set x coordinate of rectangle 
+    addi $a1, $zero, 14      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 12      # set x coordinate of rectangle 
+    addi $a1, $zero, 15      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 13      # set x coordinate of rectangle 
+    addi $a1, $zero, 14      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 14      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_rect
+    
+# Letter E
+    addi $a0, $zero, 16      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 16      # set x coordinate of rectangle 
+    addi $a1, $zero, 13      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 16      # set x coordinate of rectangle 
+    addi $a1, $zero, 15      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 16      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_rect
+
+# Letter R
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 13      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 22      # set x coordinate of rectangle 
+    addi $a1, $zero, 11      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 26      # set x coordinate of rectangle 
+    addi $a1, $zero, 12      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_rect
+    
+    addi $a0, $zero, 26      # set x coordinate of rectangle 
+    addi $a1, $zero, 14      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_rect
+
+# Letter P
+    addi $a0, $zero, 11      # set x coordinate of rectangle 
+    addi $a1, $zero, 38     # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 11      # set x coordinate of rectangle 
+    addi $a1, $zero, 40     # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 11      # set x coordinate of rectangle 
+    addi $a1, $zero, 38     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 15      # set x coordinate of rectangle 
+    addi $a1, $zero, 39     # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+
+# Letter R
+    addi $a0, $zero, 17      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+
+    addi $a0, $zero, 17      # set x coordinate of rectangle 
+    addi $a1, $zero, 40      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 17      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 21      # set x coordinate of rectangle 
+    addi $a1, $zero, 39      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 21      # set x coordinate of rectangle 
+    addi $a1, $zero, 41      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_line
+    
+# Letter E
+    addi $a0, $zero, 23      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 23      # set x coordinate of rectangle 
+    addi $a1, $zero, 40      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 23      # set x coordinate of rectangle 
+    addi $a1, $zero, 42      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 23      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+# Letter S_1
+    addi $a0, $zero, 30      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 30      # set x coordinate of rectangle 
+    addi $a1, $zero, 40      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 29      # set x coordinate of rectangle 
+    addi $a1, $zero, 42      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 29      # set x coordinate of rectangle 
+    addi $a1, $zero, 39      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 33      # set x coordinate of rectangle 
+    addi $a1, $zero, 41      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+# Letter S_2
+    addi $a0, $zero, 36      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 36      # set x coordinate of rectangle 
+    addi $a1, $zero, 40      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 35      # set x coordinate of rectangle 
+    addi $a1, $zero, 42      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 35      # set x coordinate of rectangle 
+    addi $a1, $zero, 39      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 39      # set x coordinate of rectangle 
+    addi $a1, $zero, 41      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+
+# Letter R
+    addi $a0, $zero, 47      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+
+    addi $a0, $zero, 47      # set x coordinate of rectangle 
+    addi $a1, $zero, 40      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 47      # set x coordinate of rectangle 
+    addi $a1, $zero, 38      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 51      # set x coordinate of rectangle 
+    addi $a1, $zero, 39      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 51      # set x coordinate of rectangle 
+    addi $a1, $zero, 41      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_line
+
+# Letter T
+    addi $a0, $zero, 8      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 10      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+# Letter O
+    addi $a0, $zero, 14      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 18      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 15      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 15      # set x coordinate of rectangle 
+    addi $a1, $zero, 49      # set y coordinate of rectangle 
+    addi $a2, $zero, 3      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+# Letter R
+    addi $a0, $zero, 26      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 26      # set x coordinate of rectangle 
+    addi $a1, $zero, 47      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 26      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 30      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 30      # set x coordinate of rectangle 
+    addi $a1, $zero, 48      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_line
+    
+# Letter E
+    addi $a0, $zero, 32      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 32      # set x coordinate of rectangle 
+    addi $a1, $zero, 47      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 32      # set x coordinate of rectangle 
+    addi $a1, $zero, 49      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 32      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+# Letter T
+    addi $a0, $zero, 38      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 5      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 40      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+# Letter R
+    addi $a0, $zero, 44      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 44      # set x coordinate of rectangle 
+    addi $a1, $zero, 47      # set y coordinate of rectangle 
+    addi $a2, $zero, 4      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 44      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 5     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 48      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 48      # set x coordinate of rectangle 
+    addi $a1, $zero, 48      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 2     # set height of rectangle
+    jal draw_line
+    
+# Letter Y
+    addi $a0, $zero, 50      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 51      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 52      # set x coordinate of rectangle 
+    addi $a1, $zero, 47      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 3     # set height of rectangle
+    jal draw_line
+
+    addi $a0, $zero, 53      # set x coordinate of rectangle 
+    addi $a1, $zero, 46      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    addi $a0, $zero, 54      # set x coordinate of rectangle 
+    addi $a1, $zero, 45      # set y coordinate of rectangle 
+    addi $a2, $zero, 1      # set width of rectangle
+    addi $a3, $zero, 1     # set height of rectangle
+    jal draw_line
+    
+    j retry
+
+retry:
+
+    lw $t0, ADDR_KBRD               # $t0 = base address for keyboard
+    lw $t8, 0($t0)                  # Load first word from keyboard
+    beq $t8, 1, key_detected      # If first word 1, key is pressed
+    
+    j retry
+    
+    key_detected:
+    
+    lw $a0, 4($t0)              # Load second word from keyboard
+    lw $a1, Key_R               # Load Key R
+    beq $a0, $a1, main          # Check if the key R was pressed. If so, restart the program.
+    
+    j retry
+
+exit:
     li $v0, 10              # terminate the program gracefully
     syscall
