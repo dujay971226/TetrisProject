@@ -237,7 +237,7 @@ game_loop:
     
     # jal check_rows
 
-    # sleep for 0.5s
+    # sleep for delay ms
     li $v0, 32
     lw $t1, delay
     move $a0, $t1
